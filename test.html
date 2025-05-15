@@ -1,0 +1,150 @@
+<canvas id="canvas"></canvas>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: white;
+    overflow-y: scroll;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 3000px;
+  }
+</style>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width = canvas.width = window.innerWidth;
+let height = canvas.height = 3000;
+
+const POINT_COUNT = 1200;
+const MAX_DISTANCE = 150;
+const EXPLOSION_FORCE = 120;
+const DAMPING = 0.97;
+
+let points = [];
+let rippleEffects = [];
+
+function playBeep(duration = 300) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 750;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+  osc.stop(ctx.currentTime + duration / 1000);
+}
+
+class Point {
+  constructor() {
+    this.scale = 2.0;
+    this.baseX = Math.random() * width;
+    this.baseY = Math.random() * height;
+    this.x = this.baseX;
+    this.y = this.baseY;
+    this.vx = 0;
+    this.vy = 0;
+    this.fx = 0;
+    this.fy = 0;
+    this.offset = Math.random() * 1000;
+  }
+
+  update(t) {
+    const moveX = Math.sin(t * 0.001 + this.offset) * 10;
+    const moveY = Math.cos(t * 0.001 + this.offset) * 10;
+    this.x = this.baseX + moveX + this.vx;
+    this.y = this.baseY + moveY + this.vy;
+
+    this.vx += this.fx;
+    this.vy += this.fy;
+    this.fx = this.fy = 0;
+
+    this.vx *= DAMPING;
+    this.vy *= DAMPING;
+  }
+
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'black';
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < POINT_COUNT; i++) {
+  points.push(new Point());
+}
+
+function explodeWave(x, y) {
+  rippleEffects.push({ x, y, radius: 0 });
+  playBeep(); // 클릭 시 소리 재생
+}
+
+canvas.addEventListener("click", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  explodeWave(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+canvas.addEventListener("touchstart", (e) => {
+  if (e.touches.length > 0) {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    explodeWave(touch.clientX - rect.left, touch.clientY - rect.top);
+  }
+});
+
+function applyRipples() {
+  rippleEffects.forEach((ripple, i) => {
+    ripple.radius += 4;
+    points.forEach(p => {
+      const dx = p.x - ripple.x;
+      const dy = p.y - ripple.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const diff = ripple.radius - dist;
+      if (diff > -30 && diff < 30) {
+        const force = EXPLOSION_FORCE / (dist || 1);
+        p.fx += (dx / dist) * force;
+        p.fy += (dy / dist) * force;
+      }
+    });
+    if (ripple.radius > 2000) rippleEffects.splice(i, 1);
+  });
+}
+
+function drawLines() {
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dx = points[i].x - points[j].x;
+      const dy = points[i].y - points[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MAX_DISTANCE) {
+        ctx.beginPath();
+        ctx.moveTo(points[i].x, points[i].y);
+        ctx.lineTo(points[j].x, points[j].y);
+        ctx.strokeStyle = `rgba(0, 0, 0, ${1 - dist / MAX_DISTANCE})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function animate(t) {
+  ctx.clearRect(0, 0, width, height);
+  drawLines();
+  applyRipples();
+  points.forEach(p => {
+    p.update(t);
+    p.draw();
+  });
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
